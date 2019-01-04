@@ -1,0 +1,35 @@
+option "title" "Example Beancount file"
+option "operating_currency" "USD"
+
+1792-01-01 commodity USD
+2015-12-01 commodity ABC
+
+2015-12-01 price ABC       1.00 USD
+2016-12-01 price ABC       2.00 USD
+2017-12-01 price ABC       1.25 USD
+
+2015-12-01 open Equity:Opening-Balances  
+2015-12-01 open Assets:Brokerage
+2015-12-01 open Assets:Cash
+2015-12-01 open Income:CapitalGains
+
+2015-12-01 * "Opening balance"
+    Assets:Cash           3,000 USD
+    Equity:Opening-Balances
+
+2015-12-01 * "Buy 1,000 shares"
+    Assets:Brokerage      1,000 ABC {1.00 USD}
+    Assets:Cash          -1,000 USD
+
+2016-12-01 * "Buy 1,000 more shares"
+    Assets:Brokerage      1,000 ABC {2.00 USD}
+    Assets:Cash          -2,000 USD
+
+2017-12-01 * "Sell 2,000 shares"
+    Assets:Brokerage     -1,000 ABC {1.00 USD} @ 1.25 USD
+    Assets:Brokerage     -1,000 ABC {2.00 USD} @ 1.25 USD
+    Assets:Cash           2,500 USD
+    Income:CapitalGains     500 USD
+
+# money-weighted return is -12.77% (annual)
+# time-weighted return is 11.80% (annual)
