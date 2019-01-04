@@ -31,7 +31,7 @@ python returns.py
 Dependencies
 ============
 * [dateutil](https://dateutil.readthedocs.io/en/stable/) - used for relative date processing
-* [scipy])(https://www.scipy.org/) - for Internal Rate of Return (XIRR) calculations
+* [scipy](https://www.scipy.org/) - for Internal Rate of Return (XIRR) calculations
 * [beancount](http://furius.ca/beancount/) - obviously :)
 
 Introduction
