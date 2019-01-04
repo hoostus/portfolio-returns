@@ -19,11 +19,6 @@ import beancount.core.realization
 import beancount.core.data
 import beancount.parser
 
-# TODO: investor return (money-weighted)
-# TODO: portfolio returns (time-weighted) for 1-month, 3-months, year-to-date, 1-year, 3-years, 5-years, and 10-years
-# TODO: growth of $10,000 chart
-# TODO: TEST: leaving off the year & using all the data fails
-
 # https://github.com/peliot/XIRR-and-XNPV/blob/master/financial.py
 
 def xnpv(rate,cashflows):
@@ -197,7 +192,7 @@ def get_timeweighted_returns(accounts, currency, price_map):
     total_values = []
     total_values.extend(itertools.repeat(0, len(dates)))
 
-    # TODO: this isn't right...it ignore contributions & withdrawals...
+    # TODO: this isn't right...it ignores contributions & withdrawals...
     for account, (open_, close_) in accounts:
         values = [get_value_as_of(get_postings(account), d, currency, price_map) for d in dates]
         total_values = [i+j for i,j in zip(values, total_values)]
@@ -271,12 +266,9 @@ if __name__ == '__main__':
         (start_value, end_value, cashflows, inflow_accounts, outflow_accounts) = get_cashflows(accounts_sorted, args.from_, args.to, args.currency, price_map)
         cashflows.insert(0, (args.from_, start_value))
         cashflows.append((args.to, -end_value))
-        #pprint(cashflows)
         # we need to coerce everything to a float for xirr to work...
         r = xirr([(d, float(f)) for (d,f) in cashflows])
         print('XIRR', fmt_pct(r))
-
-        # TODO: convert to annualised rate (since we may have specified multiple years)
 
         if args.debug_inflows:
             print('>> [inflows]')
