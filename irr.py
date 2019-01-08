@@ -19,6 +19,10 @@ import beancount.core.realization
 import beancount.core.data
 import beancount.parser
 
+# getters.get_min_max_dates(entries) for --to/--from
+# data.filter_txns(entries)
+# data.iter_entry_dates(entries, date_begin, date_end)
+
 # https://github.com/peliot/XIRR-and-XNPV/blob/master/financial.py
 
 def xnpv(rate,cashflows):
@@ -92,17 +96,17 @@ def only_postings(p):
     else:
         return False
 
-def in_range(from_, to_, p):
-    return from_ <= get_date(p) <= to_
+def in_range(date_from, date_to, p):
+    return date_from <= get_date(p) <= date_to
 
-def open_close_in_range(entry, from_, to):
+def open_close_in_range(entry, date_from, date_to):
     open_ = entry[1][0]
     close_ = entry[1][1]
 
     open_date = open_.date if open_ else datetime.date.min
     close_date = close_.date if close_ else datetime.date.max
 
-    return not (open_date > to) and not (close_date < from_)
+    return not (open_date > date_to) and not (close_date < date_from)
 
 def is_prefix_nonstrict(account_list, account):
     """ If account_list is empty then we should accept all accounts. """
@@ -128,7 +132,7 @@ def get_value_as_of(postings, date, currency, price_map):
         amount = balance.get_currency_units(currency)
         return amount.number
 
-def get_cashflows(accounts, from_, to, currency, price_map):
+def get_cashflows(accounts, date_from, date_to, currency, price_map):
     inflow_accounts = set()
     outflow_accounts = set()
 
@@ -138,8 +142,8 @@ def get_cashflows(accounts, from_, to, currency, price_map):
     cashflows = []
 
     for account, (open_, close_) in accounts:
-        start_value = get_value_as_of(get_postings(account), from_, currency, price_map)
-        end_value = get_value_as_of(get_postings(account), to, currency, price_map)
+        start_value = get_value_as_of(get_postings(account), date_from, currency, price_map)
+        end_value = get_value_as_of(get_postings(account), date_to, currency, price_map)
         print('-', account, fmt_d(start_value), fmt_d(end_value))
         total_start_value += start_value
         total_end_value += end_value
@@ -152,55 +156,18 @@ def get_cashflows(accounts, from_, to, currency, price_map):
         for entry in filter(filter_daterange, get_postings(account)):
             for p in entry.txn.postings:
                 if is_external(p.account):
+                    if p.cost:
+                        amount = p.units.number * p.cost.number
+                    else:
+                        amount = -p.units.number # what about different currencies?
                     # a +600 in the posting means money is flowing out (since it is +600 for the external account)
-                    cashflows.append((entry.txn.date, -p.units.number))
+                    cashflows.append((entry.txn.date, amount))
 
                     if p.units.number < 0:
                         inflow_accounts.add(p.account)
                     else:
                         outflow_accounts.add(p.account)
     return (total_start_value, total_end_value, cashflows, inflow_accounts, outflow_accounts)
-
-def get_timeweighted_returns(accounts, currency, price_map):
-    today = datetime.date.today()
-    dates = [
-        today + relativedelta(years=-10),
-        today + relativedelta(years=-5),
-        today + relativedelta(years=-3),
-        today + relativedelta(years=-1),
-        datetime.date(today.year, 1, 1),
-        today + relativedelta(months=-6),
-        today + relativedelta(months=-3),
-        today + relativedelta(months=-1),
-        today
-    ]
-    keys = [
-        '10-years',
-        '5-years',
-        '3-years',
-        '1-year',
-        'ytd',
-        '6-months',
-        '3-months',
-        '1-month',
-        'today'
-    ]
-    assert len(keys) == len(dates)
-
-    # create another list the same size as the one above but populated with
-    # 0s. This is where we will accumulate values as we iterate across accounts
-    total_values = []
-    total_values.extend(itertools.repeat(0, len(dates)))
-
-    # TODO: this isn't right...it ignores contributions & withdrawals...
-    for account, (open_, close_) in accounts:
-        values = [get_value_as_of(get_postings(account), d, currency, price_map) for d in dates]
-        total_values = [i+j for i,j in zip(values, total_values)]
-
-    decimal.getcontext().traps[decimal.DivisionByZero] = 0
-    as_pct = [float((total_values[-1] / i) - 1) for i in total_values]
-    results = dict(zip(keys, as_pct))
-    pprint(results)
 
 if __name__ == '__main__':
     import argparse
@@ -212,25 +179,25 @@ if __name__ == '__main__':
     parser.add_argument('--account', action='append', default=[], help='Account(s) to include when calculating returns. Can be specified multiple times.')
     parser.add_argument('--internal', action='append', default=[], help='Account(s) that represent internal cashflows (i.e. dividends, interest, and capital gains)')
     parser.add_argument('--year', type=int, help='Year. Shorthand for --from/--to.')
-    parser.add_argument('--from', dest='from_', type=lambda d: datetime.datetime.strptime(d, '%Y-%m-%d'), help='Start date: YYYY-MM-DD, 2016-12-31')
-    parser.add_argument('--to', type=lambda d: datetime.datetime.strptime(d, '%Y-%m-%d'), help='End date YYYY-MM-DD, 2016-12-31')
-    parser.add_argument('--time-weighted', action='store_true', help='Generate a suite of time-weighted returns instead.')
+    parser.add_argument('--from', dest='date_from', type=lambda d: datetime.datetime.strptime(d, '%Y-%m-%d').date(), help='Start date: YYYY-MM-DD, 2016-12-31')
+    parser.add_argument('--to', dest='date_to', type=lambda d: datetime.datetime.strptime(d, '%Y-%m-%d').date(), help='End date YYYY-MM-DD, 2016-12-31')
     parser.add_argument('--debug-inflows', action='store_true', help='Print list of all inflow accounts in transactions.')
     parser.add_argument('--debug-outflows', action='store_true', help='Print list of all outflow accounts in transactions.')
+    parser.add_argument('--debug-cashflows', action='store_true', help='Print list of all cashflows used for the IRR calculation.')
 
     args = parser.parse_args()
 
-    if args.year and (args.from_ or args.to):
+    if args.year and (args.date_from or args.date_to):
         raise(parser.error('--year option mutually exclusive with --to/--from options'))
 
     if args.year:
-        args.from_ = datetime.date(args.year, 1, 1)
-        args.to = datetime.date(args.year, 12, 31)
+        args.date_from = datetime.date(args.year, 1, 1)
+        args.date_to = datetime.date(args.year, 12, 31)
 
-    if not args.from_:
-        args.from_ = datetime.date.min
-    if not args.to:
-        args.to = datetime.date.max
+    if not args.date_from:
+        args.date_from = datetime.date.min
+    if not args.date_to:
+        args.date_to = datetime.date.today()
 
     entries, errors, options = beancount.loader.load_file(args.bean, logging.info, log_errors=sys.stderr)
     realized_accounts = beancount.core.realization.postings_by_account(entries)
@@ -242,7 +209,7 @@ if __name__ == '__main__':
     get_sort_key = functools.partial(beancount.core.account_types.get_account_sort_key, account_types)
     is_account = functools.partial(is_prefix_nonstrict, args.account)
     is_internal = functools.partial(is_prefix_strict, args.internal)
-    filter_daterange = functools.partial(in_range, args.from_, args.to)
+    filter_daterange = functools.partial(in_range, args.date_from, args.date_to)
 
     # We only want Asset accounts...
     items = open_close.items()
@@ -252,7 +219,7 @@ if __name__ == '__main__':
     accounts_filtered = filter(lambda entry: is_account(entry[0]), accounts_filtered)
 
     # ...and we only want accounts that were active during our date range
-    accounts_filtered = filter(lambda entry: open_close_in_range(entry, args.from_, args.to), accounts_filtered)
+    accounts_filtered = filter(lambda entry: open_close_in_range(entry, args.date_from, args.date_to), accounts_filtered)
 
     # ...and we want them sorted for us
     accounts_sorted = sorted(accounts_filtered, key=lambda entry: get_sort_key(entry[0]))
@@ -260,19 +227,18 @@ if __name__ == '__main__':
     def get_postings(account):
         return filter(only_postings, realized_accounts[account])
 
-    if args.time_weighted:
-        get_timeweighted_returns(accounts_sorted, args.currency, price_map)
-    else:
-        (start_value, end_value, cashflows, inflow_accounts, outflow_accounts) = get_cashflows(accounts_sorted, args.from_, args.to, args.currency, price_map)
-        cashflows.insert(0, (args.from_, start_value))
-        cashflows.append((args.to, -end_value))
-        # we need to coerce everything to a float for xirr to work...
-        r = xirr([(d, float(f)) for (d,f) in cashflows])
-        print('XIRR', fmt_pct(r))
+    (start_value, end_value, cashflows, inflow_accounts, outflow_accounts) = get_cashflows(accounts_sorted, args.date_from, args.date_to, args.currency, price_map)
+    cashflows.insert(0, (args.date_from, start_value))
+    cashflows.append((args.date_to, -end_value))
+    if args.debug_cashflows:
+        pprint(cashflows)
+    # we need to coerce everything to a float for xirr to work...
+    r = xirr([(d, float(f)) for (d,f) in cashflows])
+    print(fmt_pct(r))
 
-        if args.debug_inflows:
-            print('>> [inflows]')
-            pprint(inflow_accounts)
-        if args.debug_outflows:
-            print('<< [outflows]')
-            pprint(outflow_accounts)
+    if args.debug_inflows:
+        print('>> [inflows]')
+        pprint(inflow_accounts)
+    if args.debug_outflows:
+        print('<< [outflows]')
+        pprint(outflow_accounts)
