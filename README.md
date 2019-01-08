@@ -12,7 +12,7 @@ Table of Contents
    * [Introduction](#introduction)
    * [Time-weighted Returns](#time-weighted-returns)
    * [Money-weighted Returns](#money-weighted-returns)
-   * [Illustrated Example of the Difference(#illustrated-example-of-the-difference)
+   * [Illustrated Example of the Difference](#illustrated-example-of-the-difference)
    * [External vs. internal cashflows](#external-vs-internal-cashflows)
    * [Multi-currency issues](#multi-currency-issues)
    * [Parameters in more detail](#parameters-in-more-detail)
