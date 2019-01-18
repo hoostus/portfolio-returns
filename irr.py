@@ -113,6 +113,7 @@ if __name__ == '__main__':
     date_range.add_argument('--year', default=False, type=int, help='Year. Shorthand for --from/--to.')    
     date_range.add_argument('--ytd', action='store_true')
     date_range.add_argument('--1year', action='store_true')
+    date_range.add_argument('--2year', action='store_true')
     date_range.add_argument('--3year', action='store_true')
     date_range.add_argument('--5year', action='store_true')
     date_range.add_argument('--10year', action='store_true')
@@ -123,7 +124,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    shortcuts = ['year', 'ytd', '1year', '3year', '5year', '10year']
+    shortcuts = ['year', 'ytd', '1year', '2year', '3year', '5year', '10year']
     shortcut_used = functools.reduce(operator.__or__, [getattr(args, x) for x in shortcuts])
     if shortcut_used and (args.date_from or args.date_to):
         raise(parser.error('Date shortcut options mutually exclusive with --to/--from options'))
@@ -140,6 +141,11 @@ if __name__ == '__main__':
     if getattr(args, '1year'):
         today = datetime.date.today()
         args.date_from = today + relativedelta(years=-1)
+        args.date_to = today
+
+    if getattr(args, '2year'):
+        today = datetime.date.today()
+        args.date_from = today + relativedelta(years=-2)
         args.date_to = today
 
     if getattr(args, '3year'):
