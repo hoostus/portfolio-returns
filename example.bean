@@ -31,5 +31,4 @@ option "operating_currency" "USD"
     Assets:Cash           2,500 USD
     Income:CapitalGains     500 USD
 
-# money-weighted return is -12.77% (annual)
-# time-weighted return is 11.80% (annual)
+# xirr is -0.129094555 (according to Excel)
