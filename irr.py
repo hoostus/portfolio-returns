@@ -15,13 +15,10 @@ from scipy import optimize
 import beancount.loader
 import beancount.utils
 import beancount.core
-import beancount.core.realization
+import beancount.core.getters
 import beancount.core.data
+import beancount.core.convert
 import beancount.parser
-
-# getters.get_min_max_dates(entries) for --to/--from
-# data.filter_txns(entries)
-# data.iter_entry_dates(entries, date_begin, date_end)
 
 # https://github.com/peliot/XIRR-and-XNPV/blob/master/financial.py
 
@@ -96,29 +93,6 @@ def only_postings(p):
     else:
         return False
 
-def in_range(date_from, date_to, p):
-    return date_from <= get_date(p) <= date_to
-
-def open_close_in_range(entry, date_from, date_to):
-    open_ = entry[1][0]
-    close_ = entry[1][1]
-
-    open_date = open_.date if open_ else datetime.date.min
-    close_date = close_.date if close_ else datetime.date.max
-
-    return not (open_date > date_to) and not (close_date < date_from)
-
-def is_prefix_nonstrict(account_list, account):
-    """ If account_list is empty then we should accept all accounts. """
-    return (not account_list) or (functools.reduce(operator.__or__, (account.startswith(prefix) for prefix in account_list)))
-
-def is_prefix_strict(account_list, account):
-    """ If account_list is empty, then we should reject all accounts. """
-    if not account_list:
-        return False
-    else:
-        return functools.reduce(operator.__or__, (account.startswith(prefix) for prefix in account_list))
-
 def get_inventory_as_of_date(date, postings):
     inventory = beancount.core.inventory.Inventory()
     for p in filter(only_postings, postings):
@@ -132,43 +106,6 @@ def get_value_as_of(postings, date, currency, price_map):
         amount = balance.get_currency_units(currency)
         return amount.number
 
-def get_cashflows(accounts, date_from, date_to, currency, price_map):
-    inflow_accounts = set()
-    outflow_accounts = set()
-
-    total_start_value = 0
-    total_end_value = 0
-    # a list of tuples in the format (date, amount)
-    cashflows = []
-
-    for account, (open_, close_) in accounts:
-        start_value = get_value_as_of(get_postings(account), date_from, currency, price_map)
-        end_value = get_value_as_of(get_postings(account), date_to, currency, price_map)
-        print('-', account, fmt_d(start_value), fmt_d(end_value))
-        total_start_value += start_value
-        total_end_value += end_value
-
-        def is_external(account):
-            """ an external account is one that represents cashflow in & out of the
-            investment. this is in contrast to an 'internal' account, like dividends """
-            return not (is_account(account) or is_internal(account))
-
-        for entry in filter(filter_daterange, get_postings(account)):
-            for p in entry.txn.postings:
-                if is_external(p.account):
-                    if p.cost:
-                        amount = p.units.number * p.cost.number
-                    else:
-                        amount = -p.units.number # what about different currencies?
-                    # a +600 in the posting means money is flowing out (since it is +600 for the external account)
-                    cashflows.append((entry.txn.date, amount))
-
-                    if p.units.number < 0:
-                        inflow_accounts.add(p.account)
-                    else:
-                        outflow_accounts.add(p.account)
-    return (total_start_value, total_end_value, cashflows, inflow_accounts, outflow_accounts)
-
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(
@@ -177,64 +114,125 @@ if __name__ == '__main__':
     parser.add_argument('bean', help='Path to the beancount file.')
     parser.add_argument('--currency', default='USD', help='Currency to use for calculating returns.')
     parser.add_argument('--account', action='append', default=[], help='Account(s) to include when calculating returns. Can be specified multiple times.')
-    parser.add_argument('--internal', action='append', default=[], help='Account(s) that represent internal cashflows (i.e. dividends, interest, and capital gains)')
-    parser.add_argument('--year', type=int, help='Year. Shorthand for --from/--to.')
+    parser.add_argument('--internal', action='append', default=[], help='Account(s) that represent internal cashflows (i.e. dividends or interest)')
+
     parser.add_argument('--from', dest='date_from', type=lambda d: datetime.datetime.strptime(d, '%Y-%m-%d').date(), help='Start date: YYYY-MM-DD, 2016-12-31')
     parser.add_argument('--to', dest='date_to', type=lambda d: datetime.datetime.strptime(d, '%Y-%m-%d').date(), help='End date YYYY-MM-DD, 2016-12-31')
+
+    date_range = parser.add_mutually_exclusive_group()
+    date_range.add_argument('--year', default=False, type=int, help='Year. Shorthand for --from/--to.')    
+    date_range.add_argument('--ytd', action='store_true')
+    date_range.add_argument('--1year', action='store_true')
+    date_range.add_argument('--3year', action='store_true')
+    date_range.add_argument('--5year', action='store_true')
+    date_range.add_argument('--10year', action='store_true')
+
     parser.add_argument('--debug-inflows', action='store_true', help='Print list of all inflow accounts in transactions.')
     parser.add_argument('--debug-outflows', action='store_true', help='Print list of all outflow accounts in transactions.')
     parser.add_argument('--debug-cashflows', action='store_true', help='Print list of all cashflows used for the IRR calculation.')
 
     args = parser.parse_args()
 
-    if args.year and (args.date_from or args.date_to):
-        raise(parser.error('--year option mutually exclusive with --to/--from options'))
+    shortcuts = ['year', 'ytd', '1year', '3year', '5year', '10year']
+    shortcut_used = functools.reduce(operator.__or__, [getattr(args, x) for x in shortcuts])
+    if shortcut_used and (args.date_from or args.date_to):
+        raise(parser.error('Date shortcut options mutually exclusive with --to/--from options'))
 
     if args.year:
         args.date_from = datetime.date(args.year, 1, 1)
         args.date_to = datetime.date(args.year, 12, 31)
+
+    if args.ytd:
+        today = datetime.date.today()
+        args.date_from = datetime.date(today.year, 1, 1)
+        args.date_to = today
+
+    if getattr(args, '1year'):
+        today = datetime.date.today()
+        args.date_from = today + relativedelta(years=-1)
+        args.date_to = today
+
+    if getattr(args, '3year'):
+        today = datetime.date.today()
+        args.date_from = today + relativedelta(years=-3)
+        args.date_to = today
+
+    if getattr(args, '5year'):
+        today = datetime.date.today()
+        args.date_from = today + relativedelta(years=-5)
+        args.date_to = today
+
+    if getattr(args, '10year'):
+        today = datetime.date.today()
+        args.date_from = today + relativedelta(years=-10)
+        args.date_to = today
+
+    entries, errors, options = beancount.loader.load_file(args.bean, logging.info, log_errors=sys.stderr)
+    price_map = beancount.core.prices.build_price_map(entries)
 
     if not args.date_from:
         args.date_from = datetime.date.min
     if not args.date_to:
         args.date_to = datetime.date.today()
 
-    entries, errors, options = beancount.loader.load_file(args.bean, logging.info, log_errors=sys.stderr)
-    realized_accounts = beancount.core.realization.postings_by_account(entries)
-    price_map = beancount.core.prices.build_price_map(entries)
-    account_types = beancount.parser.options.get_account_types(options)
-    open_close = beancount.core.getters.get_account_open_close(entries)
+    def is_interesting_posting(posting):
+        """ Is this posting for an account we care about? """
+        for prefix in args.account:
+            if posting.account.startswith(prefix):
+                return True
+        return False
 
-    is_account_type = functools.partial(beancount.core.account_types.is_account_type, account_types.assets)
-    get_sort_key = functools.partial(beancount.core.account_types.get_account_sort_key, account_types)
-    is_account = functools.partial(is_prefix_nonstrict, args.account)
-    is_internal = functools.partial(is_prefix_strict, args.internal)
-    filter_daterange = functools.partial(in_range, args.date_from, args.date_to)
+    def is_internal_account(posting):
+        for prefix in args.internal:
+            if posting.account.startswith(prefix):
+                return True
+        return False
 
-    # We only want Asset accounts...
-    items = open_close.items()
-    accounts_filtered = filter(lambda entry: is_account_type(entry[0]), items)
+    def is_interesting_entry(entry):
+        """ Do any of the postings link to any of the accounts we care about? """
+        accounts = [p.account for p in entry.postings]
+        for posting in entry.postings:
+            if is_interesting_posting(posting):
+                return True
+        return False
 
-    # ...and we only want accounts that match our --account parameter
-    accounts_filtered = filter(lambda entry: is_account(entry[0]), accounts_filtered)
+    only_txns = beancount.core.data.filter_txns(entries)
+    interesting_txns = filter(is_interesting_entry, only_txns)
+    interesting_txns = filter(lambda p: args.date_from <= p.date <= args.date_to, interesting_txns)
+    # pull it into a list, instead of an iterator, because we're going to reuse it several times
+    interesting_txns = list(interesting_txns)
 
-    # ...and we only want accounts that were active during our date range
-    accounts_filtered = filter(lambda entry: open_close_in_range(entry, args.date_from, args.date_to), accounts_filtered)
+    cashflows = []
 
-    # ...and we want them sorted for us
-    accounts_sorted = sorted(accounts_filtered, key=lambda entry: get_sort_key(entry[0]))
+    for entry in interesting_txns:
+        cashflow = 0
+        for posting in entry.postings:
+            if is_interesting_posting(posting):
+                cashflow += beancount.core.convert.convert_position(posting, args.currency, price_map, entry.date).number
+            elif is_internal_account(posting):
+                cashflow += beancount.core.convert.convert_position(posting, args.currency, price_map, entry.date).number
+        # calculate net cashflow & the date
+        if cashflow:
+            cashflows.append((entry.date, cashflow))
 
-    def get_postings(account):
-        return filter(only_postings, realized_accounts[account])
+    start_value = get_value_as_of(interesting_txns, args.date_from, args.currency, price_map)
+    end_value = get_value_as_of(interesting_txns, args.date_to, args.currency, price_map)
+    # if starting balance isn't $0 at starting time period then we need a cashflow
+    if start_value != 0:
+        cashflows.insert(0, (args.date_from, start_value))
+    # if ending balance isn't $0 at end of time period then we need a cashflow
+    if end_value != 0:
+        cashflows.append((args.date_to, -end_value))
 
-    (start_value, end_value, cashflows, inflow_accounts, outflow_accounts) = get_cashflows(accounts_sorted, args.date_from, args.date_to, args.currency, price_map)
-    cashflows.insert(0, (args.date_from, start_value))
-    cashflows.append((args.date_to, -end_value))
     if args.debug_cashflows:
         pprint(cashflows)
-    # we need to coerce everything to a float for xirr to work...
-    r = xirr([(d, float(f)) for (d,f) in cashflows])
-    print(fmt_pct(r))
+    
+    if cashflows:
+        # we need to coerce everything to a float for xirr to work...
+        r = xirr([(d, float(f)) for (d,f) in cashflows])
+        print(fmt_pct(r))
+    else:
+        print('No cashflows found during the time period %s -> %s' % (args.date_from, args.date_to))
 
     if args.debug_inflows:
         print('>> [inflows]')
