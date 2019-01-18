@@ -133,11 +133,14 @@ Parameters in more detail
 --year
 --to
 --from
---time-weighted
 --debug-inflows
 --debug-outflows
+--debug-cashflows
 
 TODOs & Bugs
 ============
 - [ ] Generate growth of $10,000 chart.
 - [ ] Definitely needs more testing.
+- [ ] Add way to specify individual commodities and track just those
+- [ ] debug_inflows & debug_outflows are both currently broken
+- [ ] double check whether I'm right about capital gains distributions
