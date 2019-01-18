@@ -77,34 +77,24 @@ def add_position(p, inventory):
     else:
         raise Exception("Not a Posting or TxnPosting", p)
 
-def get_date(p):
-    if isinstance(p, beancount.core.data.Posting):
-        return p.date
-    elif isinstance(p, beancount.core.data.TxnPosting):
-        return p.txn.date
-    else:
-        raise Exception("Not a Posting or TxnPosting", p)
+def iter_interesting_postings(date, entries):
+    for e in entries:
+        if e.date <= date:
+            for p in e.postings:
+                if is_interesting_posting(p):
+                    yield p
 
-def only_postings(p):
-    if isinstance(p, beancount.core.data.Posting):
-        return True
-    elif isinstance(p, beancount.core.data.TxnPosting):
-        return True
-    else:
-        return False
-
-def get_inventory_as_of_date(date, postings):
+def get_inventory_as_of_date(date, entries):
     inventory = beancount.core.inventory.Inventory()
-    for p in filter(only_postings, postings):
-        if get_date(p) <= date:
-            add_position(p, inventory)
+    for p in iter_interesting_postings(date, entries):
+        add_position(p, inventory)
     return inventory
 
 def get_value_as_of(postings, date, currency, price_map):
-        inventory = get_inventory_as_of_date(date, postings)
-        balance = inventory.reduce(beancount.core.convert.convert_position, currency, price_map, date)
-        amount = balance.get_currency_units(currency)
-        return amount.number
+    inventory = get_inventory_as_of_date(date, postings)
+    balance = inventory.reduce(beancount.core.convert.convert_position, currency, price_map, date)
+    amount = balance.get_currency_units(currency)
+    return amount.number
 
 if __name__ == '__main__':
     import argparse
@@ -198,13 +188,14 @@ if __name__ == '__main__':
 
     only_txns = beancount.core.data.filter_txns(entries)
     interesting_txns = filter(is_interesting_entry, only_txns)
-    interesting_txns = filter(lambda p: args.date_from <= p.date <= args.date_to, interesting_txns)
     # pull it into a list, instead of an iterator, because we're going to reuse it several times
     interesting_txns = list(interesting_txns)
 
     cashflows = []
 
     for entry in interesting_txns:
+        if not (args.date_from <= entry.date <= args.date_to): continue
+
         cashflow = 0
         for posting in entry.postings:
             if is_interesting_posting(posting):
