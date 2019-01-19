@@ -20,6 +20,7 @@ Table of Contents
    * [Multi-currency issues](#multi-currency-issues)
    * [Parameters in more detail](#parameters-in-more-detail)
    * [TODOs &amp; Bugs](#todos--bugs)
+
 Quick Usage
 ===========
 ```sh
