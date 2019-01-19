@@ -8,7 +8,7 @@ import operator
 import math
 import collections
 import datetime
-import decimal
+from decimal import Decimal
 from dateutil.relativedelta import relativedelta
 from pprint import pprint
 from scipy import optimize
@@ -198,18 +198,39 @@ if __name__ == '__main__':
     interesting_txns = list(interesting_txns)
 
     cashflows = []
+    inflow_accounts = set()
+    outflow_accounts = set()
 
     for entry in interesting_txns:
         if not (args.date_from <= entry.date <= args.date_to): continue
 
         cashflow = 0
+        # Imagine an entry that looks like
+        # [Posting(account=Assets:Brokerage, amount=100),
+        #  Posting(account=Income:Dividend, amount=-100)]
+        # We want that to net out to $0
+        # But an entry like
+        # [Posting(account=Assets:Brokerage, amount=100),
+        #  Posting(account=Assets:Bank, amount=-100)]
+        # should net out to $100
+        # we loop over all postings in the entry. if the posting
+        # if for an account we care about e.g. Assets:Brokerage then
+        # we track the cashflow. But we *also* look for "internal"
+        # cashflows and subtract them out. This will leave a net $0
+        # if all the cashflows are internal.
         for posting in entry.postings:
+            value = beancount.core.convert.convert_position(posting, args.currency, price_map, entry.date).number
             if is_interesting_posting(posting):
-                cashflow += beancount.core.convert.convert_position(posting, args.currency, price_map, entry.date).number
+                cashflow += value
             elif is_internal_account(posting):
-                cashflow += beancount.core.convert.convert_position(posting, args.currency, price_map, entry.date).number
+                cashflow += value
+            else:
+                if value > 0:
+                    outflow_accounts.add(posting.account)
+                else:
+                    inflow_accounts.add(posting.account)
         # calculate net cashflow & the date
-        if cashflow:
+        if cashflow.quantize(Decimal('.01')) != 0:
             cashflows.append((entry.date, cashflow))
 
     start_value = get_value_as_of(interesting_txns, args.date_from, args.currency, price_map)
@@ -220,9 +241,6 @@ if __name__ == '__main__':
     # if ending balance isn't $0 at end of time period then we need a cashflow
     if end_value != 0:
         cashflows.append((args.date_to, -end_value))
-
-    if args.debug_cashflows:
-        pprint(cashflows)
     
     if cashflows:
         # we need to coerce everything to a float for xirr to work...
@@ -231,6 +249,8 @@ if __name__ == '__main__':
     else:
         print('No cashflows found during the time period %s -> %s' % (args.date_from, args.date_to))
 
+    if args.debug_cashflows:
+        pprint(cashflows)
     if args.debug_inflows:
         print('>> [inflows]')
         pprint(inflow_accounts)
