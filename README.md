@@ -4,9 +4,11 @@ This will calculator money-weighted and time-weighted returns
 for a portfolio for [beancount](http://furius.ca/beancount/), the
 double-entry plaintext accounting software.
 
-
 Table of Contents
 =================
+
+   * [Beancount Returns Calculator](#beancount-returns-calculator)
+   * [Table of Contents](#table-of-contents)
    * [Quick Usage](#quick-usage)
    * [Dependencies](#dependencies)
    * [Introduction](#introduction)
@@ -14,10 +16,10 @@ Table of Contents
    * [Money-weighted Returns](#money-weighted-returns)
    * [Illustrated Example of the Difference](#illustrated-example-of-the-difference)
    * [External vs. internal cashflows](#external-vs-internal-cashflows)
+   * [Note on capital gains](#note-on-capital-gains)
    * [Multi-currency issues](#multi-currency-issues)
    * [Parameters in more detail](#parameters-in-more-detail)
    * [TODOs &amp; Bugs](#todos--bugs)
-
 Quick Usage
 ===========
 ```sh
@@ -38,6 +40,11 @@ Dependencies
 
 Introduction
 ============
+This script will determine the rate of return for a portfolio held without beancount.
+You can specify which accounts & which timeframes you are interested in. We calculate
+"money-weighted returns", which means taking into account the timing & value of cashflows.
+In particular, this means you -- the user -- need to tell us which beancount accounts
+are real cashflows in & out of the account. See below for more on this.
 
 Time-weighted Returns
 =====================
@@ -103,8 +110,20 @@ The money-weighted return for the same investment is -52%.
 
 External vs. internal cashflows
 ===============================
-An external cashflow means "external to the portfolio". It is using money that
-not currently in the portfolio to buy shares.
+When calculating money-weighted returns we need to distinguish "real", or external, cashflows
+from "apparent", or internal, cashflows.
+
+Imagine that your portfolio pays you a dividend but your account is set to automatically
+reinvest dividends. Even though there is an apparent cashflow between accounts nothing has
+actually changed; from the rate of return perspective it is as if the money never left
+your portfolio.
+
+So we need to know which accounts to ignore when looking for cashflows. In practice,
+this is limited to three kinds of things:
+
+* Interest that is reinvested
+* Dividends that are reinvested
+* Capital gains distributions that are reinvested
 
 Note on capital gains
 =====================
@@ -127,20 +146,24 @@ TBD. I have no idea if this works at all with multiple-currencies....
 
 Parameters in more detail
 =========================
---currency
---account
---internal
---year
---to
---from
---debug-inflows
---debug-outflows
---debug-cashflows
+* --currency. In order to generate meaningful cashflows we need to convert the securities we hold into a currency. You need to tell the script which currency to use. USD is the default if you don't specify anything.
+* --account. Which accounts to calculate the rate of return for. You can specify this multiple times if you want. This is actually treated as an account prefix to match again so Assets:US would match both Assets:US:Schwab and Assets:US:MerrillLynch
+* --internal. Accounts to treat as "internal" when deciding whether to ignore cashflows. This is also a prefix and can be specified multiple times.
+* --to. The start date to use when calculating returns. If not specified, uses the earliest date found in the beancount file.
+* --from. The end date to use when calculating returns. If not specified, uses today.
+* --year. A shortcut to easily calculate returns for a single calendar year.
+* --ytd. A shortcut to calculate returns for the year-to-date.
+* --1year, --2year, --3year, --5year, --10year. A shortcut to calculate returns for various time periods.
+* --debug-inflows. List all of the accounts that generated an outflow. Useful for debugging whether you've specified all of the --internal accounts you need to.
+* --debug-outflows. List all of the accounts that generated an inflow. Useful for debugging whether you've specified all of the --internal accounts you need to.
+* --debug-cashflows. List all of the date & amount of cashflows used for the rate of return calculation.
 
 TODOs & Bugs
 ============
 - [ ] Generate growth of $10,000 chart.
 - [ ] Definitely needs more testing.
 - [ ] Add way to specify individual commodities and track just those
-- [ ] debug_inflows & debug_outflows are both currently broken
+- [ ] As I write up the documentation, I become less certain about the need
+to specify internal accounts, if we just track those cashflows won't it have no
+effect on the rate of return? I take out $100 and then put $100 back in the same day?
 - [ ] double check whether I'm right about capital gains distributions
