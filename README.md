@@ -148,8 +148,8 @@ TBD. I have no idea if this works at all with multiple-currencies....
 Parameters in more detail
 =========================
 * --currency. In order to generate meaningful cashflows we need to convert the securities we hold into a currency. You need to tell the script which currency to use. USD is the default if you don't specify anything.
-* --account. Which accounts to calculate the rate of return for. You can specify this multiple times if you want. This is actually treated as an account prefix to match again so Assets:US would match both Assets:US:Schwab and Assets:US:MerrillLynch
-* --internal. Accounts to treat as "internal" when deciding whether to ignore cashflows. This is also a prefix and can be specified multiple times.
+* --account. Accounts to calculate the rate of return for. This can be specified multiple times. This takes a regular expression to match account names. So "^Assets:US:.\*" would match Assets:US:Schwab and Assets:US:MerrillLynch 
+* --internal. Accounts to treat as "internal" when deciding whether to ignore cashflows. This is also takes a regular expression and can be specified multiple times. 
 * --to. The start date to use when calculating returns. If not specified, uses the earliest date found in the beancount file.
 * --from. The end date to use when calculating returns. If not specified, uses today.
 * --year. A shortcut to easily calculate returns for a single calendar year.
