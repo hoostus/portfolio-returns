@@ -206,7 +206,7 @@ if __name__ == '__main__':
     for entry in interesting_txns:
         if not (args.date_from <= entry.date <= args.date_to): continue
 
-        cashflow = 0
+        cashflow = Decimal(0)
         # Imagine an entry that looks like
         # [Posting(account=Assets:Brokerage, amount=100),
         #  Posting(account=Income:Dividend, amount=-100)]
