@@ -1,0 +1,20 @@
+option "operating_currency" "USD"
+plugin "beancount.plugins.auto_accounts"
+
+2018-01-01 * "Buy"
+   Assets:Investments 100 HOOLI {1 USD}
+   Assets:Bank
+
+2018-04-01 * "Conversion"
+   Assets:Investments -100 HOOLI {}
+   Assets:Investments 50 IOOLI {2 USD}
+
+2018-12-31 price HOOLI 1.5 USD
+2018-12-31 price IOOLI 3 USD
+
+; Expected output: 50%
+; Actual output: 150%
+; python irr.py --account Assets:Investments conversion.bean --from 2018-01-01 --to 2018-12-31
+; this gives the wrong answer because beancount.core.convert_position() in irr.py
+; doesn't generate a USD value because there's nothing about IOOLI in the pricemap
+2018-04-01 price IOOLI 2 USD

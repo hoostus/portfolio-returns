@@ -1,0 +1,10 @@
+option "operating_currency" "USD"
+plugin "beancount.plugins.auto_accounts"
+plugin "beancount.plugins.implicit_prices"
+
+2018-01-01 * "Buy"
+   Assets:Investments 100 HOOLI {2 USD}
+   Assets:Bank
+
+; python irr.py --account Assets:Investments nop.bean --from 2018-01-01 --to 2018-12-31 --debug-cashflows
+; currently fails with a stack trace

@@ -31,4 +31,5 @@ option "operating_currency" "USD"
     Assets:Cash           2,500 USD
     Income:CapitalGains     500 USD
 
-# xirr is -0.129094555 (according to Excel)
+; xirr is -0.129094555 (according to Excel)
+; python irr.py --account Assets:Brokerage example.bean
