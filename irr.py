@@ -19,6 +19,7 @@ import beancount.core.getters
 import beancount.core.data
 import beancount.core.convert
 import beancount.parser
+from pprint import pprint
 
 # https://github.com/peliot/XIRR-and-XNPV/blob/master/financial.py
 
@@ -218,8 +219,10 @@ if __name__ == '__main__':
         # we track the cashflow. But we *also* look for "internal"
         # cashflows and subtract them out. This will leave a net $0
         # if all the cashflows are internal.
+
         for posting in entry.postings:
             value = beancount.core.convert.convert_position(posting, args.currency, price_map, entry.date).number
+
             if is_interesting_posting(posting):
                 cashflow += value
             elif is_internal_account(posting):
@@ -234,6 +237,11 @@ if __name__ == '__main__':
             cashflows.append((entry.date, cashflow))
 
     start_value = get_value_as_of(interesting_txns, args.date_from, args.currency, price_map)
+    # the start_value will include any cashflows that occurred on that date...
+    # this leads to double-counting them, since they'll also appear in our cashflows
+    # list. So we need to deduct them from start_value
+    opening_txns = [amount for (date, amount) in cashflows if date == args.date_from]
+    start_value -= functools.reduce(operator.add, opening_txns)
     end_value = get_value_as_of(interesting_txns, args.date_to, args.currency, price_map)
     # if starting balance isn't $0 at starting time period then we need a cashflow
     if start_value != 0:
