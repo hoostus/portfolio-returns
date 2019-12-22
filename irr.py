@@ -261,7 +261,7 @@ if __name__ == '__main__':
         r = xirr([(d, float(f)) for (d,f) in cashflows])
         print(fmt_pct(r))
     else:
-        print('No cashflows found during the time period %s -> %s' % (args.date_from, args.date_to))
+        logging.error(f'No cashflows found during the time period {args.date_from} -> {args.date_to}')
 
     if args.debug_cashflows:
         pprint(cashflows)
