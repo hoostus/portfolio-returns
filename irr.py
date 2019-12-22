@@ -8,6 +8,7 @@ import operator
 import math
 import collections
 import datetime
+import re
 from decimal import Decimal
 from dateutil.relativedelta import relativedelta
 from pprint import pprint
@@ -104,8 +105,8 @@ if __name__ == '__main__':
     )
     parser.add_argument('bean', help='Path to the beancount file.')
     parser.add_argument('--currency', default='USD', help='Currency to use for calculating returns.')
-    parser.add_argument('--account', action='append', default=[], help='Account(s) to include when calculating returns. Can be specified multiple times.')
-    parser.add_argument('--internal', action='append', default=[], help='Account(s) that represent internal cashflows (i.e. dividends or interest)')
+    parser.add_argument('--account', action='append', default=[], help='Regex pattern of accounts to include when calculating returns. Can be specified multiple times.')
+    parser.add_argument('--internal', action='append', default=[], help='Regex pattern of accounts that represent internal cashflows (i.e. dividends or interest)')
 
     parser.add_argument('--from', dest='date_from', type=lambda d: datetime.datetime.strptime(d, '%Y-%m-%d').date(), help='Start date: YYYY-MM-DD, 2016-12-31')
     parser.add_argument('--to', dest='date_to', type=lambda d: datetime.datetime.strptime(d, '%Y-%m-%d').date(), help='End date YYYY-MM-DD, 2016-12-31')
@@ -174,14 +175,14 @@ if __name__ == '__main__':
 
     def is_interesting_posting(posting):
         """ Is this posting for an account we care about? """
-        for prefix in args.account:
-            if posting.account.startswith(prefix):
+        for pattern in args.account:
+            if re.match(pattern, posting.account):
                 return True
         return False
 
     def is_internal_account(posting):
-        for prefix in args.internal:
-            if posting.account.startswith(prefix):
+        for pattern in args.internal:
+            if re.match(pattern, posting.account):
                 return True
         return False
 
