@@ -225,7 +225,7 @@ if __name__ == '__main__':
         for posting in entry.postings:
             converted = beancount.core.convert.convert_position(posting, args.currency, price_map, entry.date)
             if converted.currency != args.currency:
-                logging.error(f'Could not convert posting {converted} from {entry.date} on line {posting.meta["lineno"]} to {args.currency}.')
+                logging.error(f'Could not convert posting {converted} from {entry.date} on line {posting.meta["lineno"]} to {args.currency}. IRR will be wrong.')
                 continue
             value = converted.number
 
