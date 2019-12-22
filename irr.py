@@ -242,7 +242,7 @@ if __name__ == '__main__':
     # this leads to double-counting them, since they'll also appear in our cashflows
     # list. So we need to deduct them from start_value
     opening_txns = [amount for (date, amount) in cashflows if date == args.date_from]
-    start_value -= functools.reduce(operator.add, opening_txns)
+    start_value -= functools.reduce(operator.add, opening_txns, 0)
     end_value = get_value_as_of(interesting_txns, args.date_to, args.currency, price_map)
     # if starting balance isn't $0 at starting time period then we need a cashflow
     if start_value != 0:
