@@ -99,6 +99,7 @@ def get_value_as_of(postings, date, currency, price_map):
     return amount.number
 
 if __name__ == '__main__':
+    logging.basicConfig(format='%(levelname)s: %(message)s')
     import argparse
     parser = argparse.ArgumentParser(
         description="Calculate return data."
@@ -222,7 +223,11 @@ if __name__ == '__main__':
         # if all the cashflows are internal.
 
         for posting in entry.postings:
-            value = beancount.core.convert.convert_position(posting, args.currency, price_map, entry.date).number
+            converted = beancount.core.convert.convert_position(posting, args.currency, price_map, entry.date)
+            if converted.currency != args.currency:
+                logging.error(f'Could not convert posting {converted} from {entry.date} on line {posting.meta["lineno"]} to {args.currency}.')
+                continue
+            value = converted.number
 
             if is_interesting_posting(posting):
                 cashflow += value
