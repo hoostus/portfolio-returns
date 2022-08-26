@@ -13,6 +13,7 @@ from decimal import Decimal
 from dateutil.relativedelta import relativedelta
 from pprint import pprint
 from scipy import optimize
+from typing import Any, Dict, List, NamedTuple, Optional, Set, Union
 import beancount.loader
 import beancount.utils
 import beancount.core
@@ -21,6 +22,7 @@ import beancount.core.data
 import beancount.core.convert
 import beancount.parser
 from pprint import pprint
+from cashflows import get_cashflows
 
 # https://github.com/peliot/XIRR-and-XNPV/blob/master/financial.py
 
@@ -70,33 +72,6 @@ def fmt_d(n):
 
 def fmt_pct(n):
     return '{0:.2f}%'.format(n*100)
-
-def add_position(p, inventory):
-    if isinstance(p, beancount.core.data.Posting):
-        inventory.add_position(p)
-    elif isinstance(p, beancount.core.data.TxnPosting):
-        inventory.add_position(p.posting)
-    else:
-        raise Exception("Not a Posting or TxnPosting", p)
-
-def iter_interesting_postings(date, entries):
-    for e in entries:
-        if e.date <= date:
-            for p in e.postings:
-                if is_interesting_posting(p):
-                    yield p
-
-def get_inventory_as_of_date(date, entries):
-    inventory = beancount.core.inventory.Inventory()
-    for p in iter_interesting_postings(date, entries):
-        add_position(p, inventory)
-    return inventory
-
-def get_value_as_of(postings, date, currency, price_map):
-    inventory = get_inventory_as_of_date(date, postings)
-    balance = inventory.reduce(beancount.core.convert.convert_position, currency, price_map, date)
-    amount = balance.get_currency_units(currency)
-    return amount.number
 
 if __name__ == '__main__':
     logging.basicConfig(format='%(levelname)s: %(message)s')
@@ -167,107 +142,28 @@ if __name__ == '__main__':
         args.date_to = today
 
     entries, errors, options = beancount.loader.load_file(args.bean, logging.info, log_errors=sys.stderr)
-    price_map = beancount.core.prices.build_price_map(entries)
 
     if not args.date_from:
         args.date_from = datetime.date.min
     if not args.date_to:
         args.date_to = datetime.date.today()
 
-    def is_interesting_posting(posting):
-        """ Is this posting for an account we care about? """
-        for pattern in args.account:
-            if re.match(pattern, posting.account):
-                return True
-        return False
+    cashflows = get_cashflows(
+        entries=entries, interesting_accounts=args.account, internal_accounts=args.internal,
+        date_from=args.date_from, date_to=args.date_to, currency=args.currency)
 
-    def is_internal_account(posting):
-        for pattern in args.internal:
-            if re.match(pattern, posting.account):
-                return True
-        return False
-
-    def is_interesting_entry(entry):
-        """ Do any of the postings link to any of the accounts we care about? """
-        accounts = [p.account for p in entry.postings]
-        for posting in entry.postings:
-            if is_interesting_posting(posting):
-                return True
-        return False
-
-    only_txns = beancount.core.data.filter_txns(entries)
-    interesting_txns = filter(is_interesting_entry, only_txns)
-    # pull it into a list, instead of an iterator, because we're going to reuse it several times
-    interesting_txns = list(interesting_txns)
-
-    cashflows = []
-    inflow_accounts = set()
-    outflow_accounts = set()
-
-    for entry in interesting_txns:
-        if not (args.date_from <= entry.date <= args.date_to): continue
-
-        cashflow = Decimal(0)
-        # Imagine an entry that looks like
-        # [Posting(account=Assets:Brokerage, amount=100),
-        #  Posting(account=Income:Dividend, amount=-100)]
-        # We want that to net out to $0
-        # But an entry like
-        # [Posting(account=Assets:Brokerage, amount=100),
-        #  Posting(account=Assets:Bank, amount=-100)]
-        # should net out to $100
-        # we loop over all postings in the entry. if the posting
-        # if for an account we care about e.g. Assets:Brokerage then
-        # we track the cashflow. But we *also* look for "internal"
-        # cashflows and subtract them out. This will leave a net $0
-        # if all the cashflows are internal.
-
-        for posting in entry.postings:
-            converted = beancount.core.convert.convert_position(posting, args.currency, price_map, entry.date)
-            if converted.currency != args.currency:
-                logging.error(f'Could not convert posting {converted} from {entry.date} on line {posting.meta["lineno"]} to {args.currency}. IRR will be wrong.')
-                continue
-            value = converted.number
-
-            if is_interesting_posting(posting):
-                cashflow += value
-            elif is_internal_account(posting):
-                cashflow += value
-            else:
-                if value > 0:
-                    outflow_accounts.add(posting.account)
-                else:
-                    inflow_accounts.add(posting.account)
-        # calculate net cashflow & the date
-        if cashflow.quantize(Decimal('.01')) != 0:
-            cashflows.append((entry.date, cashflow))
-
-    start_value = get_value_as_of(interesting_txns, args.date_from, args.currency, price_map)
-    # the start_value will include any cashflows that occurred on that date...
-    # this leads to double-counting them, since they'll also appear in our cashflows
-    # list. So we need to deduct them from start_value
-    opening_txns = [amount for (date, amount) in cashflows if date == args.date_from]
-    start_value -= functools.reduce(operator.add, opening_txns, 0)
-    end_value = get_value_as_of(interesting_txns, args.date_to, args.currency, price_map)
-    # if starting balance isn't $0 at starting time period then we need a cashflow
-    if start_value != 0:
-        cashflows.insert(0, (args.date_from, start_value))
-    # if ending balance isn't $0 at end of time period then we need a cashflow
-    if end_value != 0:
-        cashflows.append((args.date_to, -end_value))
-    
     if cashflows:
         # we need to coerce everything to a float for xirr to work...
-        r = xirr([(d, float(f)) for (d,f) in cashflows])
+        r = xirr([(f.date, float(f.amount)) for f in cashflows])
         print(fmt_pct(r))
     else:
         logging.error(f'No cashflows found during the time period {args.date_from} -> {args.date_to}')
 
     if args.debug_cashflows:
-        pprint(cashflows)
+        pprint([(f.date, f.amount) for f in cashflows])
     if args.debug_inflows:
         print('>> [inflows]')
-        pprint(inflow_accounts)
+        pprint(set().union(*[f.inflows for f in cashflows]))
     if args.debug_outflows:
         print('<< [outflows]')
-        pprint(outflow_accounts)
+        pprint(set().union(*[f.outflows for f in cashflows]))
