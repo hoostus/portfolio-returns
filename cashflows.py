@@ -8,6 +8,7 @@ import operator
 import re
 import dataclasses
 
+from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 from typing import List, Optional, Set
 
@@ -71,7 +72,7 @@ class Cashflow:
     entry: Optional[Transaction] = None
 
 def get_cashflows(entries: List[Transaction], interesting_accounts: List[str], internal_accounts:
-                  List[str], date_from: datetime.date, date_to: datetime.date,
+                  List[str], date_from: Optional[datetime.date], date_to: datetime.date,
                   currency: Currency) -> List[Cashflow]:
     """Extract a series of cashflows affecting 'interesting_accounts'.
 
@@ -97,7 +98,8 @@ def get_cashflows(entries: List[Transaction], interesting_accounts: List[str], i
     cashflows = []
 
     for entry in interesting_txns:
-        if not (date_from <= entry.date <= date_to): continue
+        if date_from is not None and not date_from <= entry.date: continue
+        if not entry.date <= date_to: continue
 
         cashflow = Decimal(0)
         inflow_accounts = set()
@@ -117,7 +119,8 @@ def get_cashflows(entries: List[Transaction], interesting_accounts: List[str], i
         # if all the cashflows are internal.
 
         for posting in entry.postings:
-            converted = beancount.core.convert.convert_position(posting, currency, price_map, entry.date)
+            converted = beancount.core.convert.convert_amount(
+                beancount.core.convert.get_weight(posting), currency, price_map, entry.date)
             if converted.currency != currency:
                 logging.error(f'Could not convert posting {converted} from {entry.date} on line {posting.meta["lineno"]} to {currency}. IRR will be wrong.')
                 continue
@@ -139,16 +142,13 @@ def get_cashflows(entries: List[Transaction], interesting_accounts: List[str], i
                                       outflow_accounts=outflow_accounts,
                                       entry=entry))
 
-    start_value = get_value_as_of(interesting_txns, date_from, currency, price_map, interesting_accounts)
-    # the start_value will include any cashflows that occurred on that date...
-    # this leads to double-counting them, since they'll also appear in our cashflows
-    # list. So we need to deduct them from start_value
-    opening_txns = [f.amount for f in cashflows if f.date == date_from]
-    start_value -= functools.reduce(operator.add, opening_txns, 0)
+    if date_from is not None:
+        start_value = get_value_as_of(interesting_txns, date_from + relativedelta(days=-1),
+                                      currency, price_map, interesting_accounts)
+        # if starting balance isn't $0 at starting time period then we need a cashflow
+        if start_value != 0:
+            cashflows.insert(0, Cashflow(date=date_from, amount=start_value))
     end_value = get_value_as_of(interesting_txns, date_to, currency, price_map, interesting_accounts)
-    # if starting balance isn't $0 at starting time period then we need a cashflow
-    if start_value != 0:
-        cashflows.insert(0, Cashflow(date=date_from, amount=start_value))
     # if ending balance isn't $0 at end of time period then we need a cashflow
     if end_value != 0:
         cashflows.append(Cashflow(date=date_to, amount=-end_value))
