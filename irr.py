@@ -143,8 +143,6 @@ if __name__ == '__main__':
 
     entries, errors, options = beancount.loader.load_file(args.bean, logging.info, log_errors=sys.stderr)
 
-    if not args.date_from:
-        args.date_from = datetime.date.min
     if not args.date_to:
         args.date_to = datetime.date.today()
 
@@ -163,7 +161,7 @@ if __name__ == '__main__':
         pprint([(f.date, f.amount) for f in cashflows])
     if args.debug_inflows:
         print('>> [inflows]')
-        pprint(set().union(*[f.inflows for f in cashflows]))
+        pprint(set().union(*[f.inflow_accounts for f in cashflows]))
     if args.debug_outflows:
         print('<< [outflows]')
-        pprint(set().union(*[f.outflows for f in cashflows]))
+        pprint(set().union(*[f.outflow_accounts for f in cashflows]))
